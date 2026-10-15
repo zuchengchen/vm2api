@@ -147,6 +147,27 @@ function pinnedVmId(req) {
   return isValidVmId(pinVmRaw) ? pinVmRaw : null
 }
 
+/** Restricted keys (pool or platform allowlist) must not collapse to no_codex_vm. */
+function scopedGptUnavailable(scope) {
+  if (scope?.vm_pool_id) {
+    return {
+      error: 'vm_pool_unavailable',
+      message: '账号池没有可调度的 GPT 槽位',
+      ids: [],
+      candidates: [],
+    }
+  }
+  if (scope?.group_type && scope.group_type !== 'all' && (scope.allowed_vms || []).length) {
+    return {
+      error: 'vm_pool_unavailable',
+      message: '密钥勾选的 GPT 槽位当前不可调度',
+      ids: [],
+      candidates: [],
+    }
+  }
+  return null
+}
+
 /**
  * Current OpenAI candidates, re-read on every admission. A busy home keeps
  * its pin; only a home that left the pool for good releases the session.
@@ -188,8 +209,13 @@ export function pickCodexCandidates(
   const bound = sessionKey ? stickyRouter?.resolve?.(sessionKey) : null
   const vms = listVms(projectRoot, { codex: { quota: routingPolicy } }).filter((vm) => keyAllowsVm(scope, vm))
   const continuesResponse = !!body?.previous_response_id && !!bound?.vmId
-  if (scope.vm_pool_id && vms.length === 0 && !continuesResponse) {
-    return { error: 'vm_pool_unavailable', message: '账号池没有可调度的 GPT 槽位', ids: [], candidates: [] }
+  const scopedDeny = () => {
+    const deny = scopedGptUnavailable(scope)
+    return deny ? { ...deny, sessionKey, stickyKeys } : null
+  }
+  if (!continuesResponse && vms.length === 0) {
+    const deny = scopedDeny()
+    if (deny) return deny
   }
   const ordered = orderCodexSessionSlots(continuesResponse ? vms.filter((vm) => vm.id === bound.vmId) : vms, {
     boundVmId: bound?.vmId || null,
@@ -207,6 +233,10 @@ export function pickCodexCandidates(
   }
   if (continuesResponse && (ordered.boundState === 'gone' || ordered.error === 'candidates_exhausted')) {
     return { error: 'response_not_portable', ids: [], sessionKey, stickyKeys, boundVmId: bound.vmId }
+  }
+  if (!continuesResponse && ordered.error === 'no_codex_vm') {
+    const deny = scopedDeny()
+    if (deny) return deny
   }
   return { ...ordered, sessionKey, stickyKeys }
 }
@@ -845,7 +875,11 @@ function rejectCodexAdmission({ res, json, stats, logBag, picked, model }) {
     })
   }
   return json(res, 503, {
-    error: { type: 'api_error', code: picked.error || 'no_codex_vm', message: 'no Codex kernel VM is configured' },
+    error: {
+      type: 'api_error',
+      code: picked.error || 'no_codex_vm',
+      message: picked.message || 'no Codex kernel VM is configured',
+    },
   })
 }
 
