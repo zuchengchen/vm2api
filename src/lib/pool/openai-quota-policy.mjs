@@ -6,6 +6,7 @@
  * a value cannot silently acquire a different meaning at another boundary.
  */
 import { buildCodexUsageView } from '../protocol/codex-usage.mjs'
+import { openaiCreditsEnabledOf } from '../czc/openai-credits-flags.mjs'
 
 export const OPENAI_QUOTA_DEFAULTS = Object.freeze({
   limit_5h: 1,
@@ -121,6 +122,7 @@ export function evaluateOpenAIQuotaGate(vm, policy = OPENAI_QUOTA_DEFAULTS, now 
   const usage = Object.keys(extra).length
     ? buildCodexUsageView(extra).quota
     : vm?.codex_usage?.quota || vm?.codex?.usage?.quota || {}
+  const allowCredits = openaiCreditsEnabledOf(vm)
   let first = null
   let until = null
   for (const key of ['5h', '7d']) {
@@ -129,6 +131,8 @@ export function evaluateOpenAIQuotaGate(vm, policy = OPENAI_QUOTA_DEFAULTS, now 
     const used = percent == null ? usageFraction(normalized) : usageFraction(percent, { percent: true })
     const reset = extra[`codex_${key}_reset_at`] ?? usage[`reset_${key}`] ?? vm?.[`reset_${key}`]
     if (used == null || resetIsLive(reset, now) === false || used < effective[`limit_${key}`]) continue
+    // 套餐 100% 后由上游扣点数；本地 limit<1 的提前停用仍生效。
+    if (allowCredits && used >= 1) continue
     const at = typeof reset === 'number' ? reset : Date.parse(reset || '')
     if (Number.isFinite(at) && at > now) until = until == null ? at : Math.min(until, at)
     first ||= { limited: true, reason: `quota_${key}_local`, window: key, used, limit: effective[`limit_${key}`] }

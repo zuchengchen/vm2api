@@ -185,6 +185,7 @@ function userVmPathAllowed(method, path) {
       rest === 'stop' ||
       rest === 'openai-quota/refresh' ||
       rest === 'openai-quota/reset' ||
+      rest === 'openai-quota/settings' ||
       rest === 'claude-reset/query' ||
       rest === 'claude-reset/redeem' ||
       rest.startsWith('oauth/')

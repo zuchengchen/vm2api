@@ -8,3 +8,4 @@
 | `CHANGELOG.czc.md` | 本叉变更记录 | 保留；不要并进上游 `CHANGELOG.md` |
 | `docs/CZC-PATCHES.md` | 本表 | 保留 |
 | `src/lib/protocol/handle-codex.mjs` | 受限密钥无可用 GPT 槽时返回 `vm_pool_unavailable`，避免误报 `no_codex_vm` | `node --test test/unit/pick-codex-candidates.test.mjs`；合上游时核对 `pickCodexCandidates` / `rejectCodexAdmission` |
+| `src/lib/czc/openai-credits*.mjs`、`openai-auto-reset.mjs`；额度闸门 / `codexQuotaPark` / 面板 GPT 额度区 | GPT 槽自动重置券、点数展示、额度用尽后消耗点数 | `node --test test/unit/czc-openai-credits.test.mjs test/unit/openai-quota.test.mjs test/unit/codex-slot-pool.test.mjs` |
