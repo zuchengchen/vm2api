@@ -19,6 +19,7 @@ import {
   toCodexResponses,
 } from './codex-convert.mjs'
 import { extraFromCodexHeaders, codexQuotaPark, CODEX_DEFAULT_PARK_MS } from './codex-usage.mjs'
+import { openaiAutoResetEnabledOf } from '../czc/openai-credits-flags.mjs'
 import { extractOpenaiUsage } from './openai-usage.mjs'
 import { streamCodexKernel } from '../transport/codex-kernel-client.mjs'
 import { ensureCodexKernel, writeCodexKernelConfig } from '../transport/codex-kernel-supervisor.mjs'
@@ -253,7 +254,13 @@ function ingestCodexHop(projectRoot, vmId, result, now = Date.now(), policy = nu
     limitedUntil = park.until || now + CODEX_DEFAULT_PARK_MS
   }
   if (!extra && !limitedUntil) return null
-  return persistCodexUsage(projectRoot, vmId, { headers, extra, limitedUntil, now, policy })
+  const persisted = persistCodexUsage(projectRoot, vmId, { headers, extra, limitedUntil, now, policy })
+  if (persisted && openaiAutoResetEnabledOf(persisted)) {
+    void import('../czc/openai-auto-reset.mjs')
+      .then((mod) => mod.maybeAutoResetOpenaiQuota({ projectRoot, vmId, policy }))
+      .catch(() => {})
+  }
+  return persisted
 }
 
 function execFor(projectRoot, vm) {

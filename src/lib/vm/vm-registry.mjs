@@ -31,6 +31,7 @@ import {
 import { summarizeCodexSlot } from './codex-slot.mjs'
 import { evaluateCodexQuotaSchedule } from '../pool/codex-slot-pool.mjs'
 import { effectiveOpenAIPolicy, normalizeOpenAIQuotaPolicy } from '../pool/openai-quota-policy.mjs'
+import { openaiCreditsEnabledOf } from '../czc/openai-credits-flags.mjs'
 import { runtimeKind } from './runtime-kind.mjs'
 import { hasBoundExit } from './egress.mjs'
 import { ensureSlotSmbios } from './machine-spec.mjs'
@@ -162,6 +163,11 @@ export function summarizeVm(vm, projectRoot = null, routing = null) {
           }
         : null,
     reset_credits: codex?.reset_credits || null,
+    credits: kind.kind === 'codex' ? codex?.credits || null : null,
+    auto_reset_credit_enabled: kind.kind === 'codex' ? !!codex?.auto_reset_credit_enabled : false,
+    openai_credits_enabled: kind.kind === 'codex' ? !!codex?.openai_credits_enabled : false,
+    codex_limited_until:
+      kind.kind === 'codex' ? vm.codex?.extra?.codex_limited_until || vm.codex_limited_until || null : null,
     plan_type: codex?.plan_type || null,
     claude_reset_credits: kind.kind === 'codex' ? null : vm.claude_reset_credits || null,
   }
@@ -211,7 +217,9 @@ export function persistCodexUsage(
   if (limitedUntil) {
     merged.codex_limited_until = new Date(limitedUntil).toISOString()
   } else {
-    const parked = codexQuotaPark({ ...merged, codex_limited_until: null }, now)
+    const parked = codexQuotaPark({ ...merged, codex_limited_until: null }, now, {
+      creditsEnabled: openaiCreditsEnabledOf(vm),
+    })
     if (parked.limited) merged.codex_limited_until = new Date(parked.until).toISOString()
     else delete merged.codex_limited_until
   }

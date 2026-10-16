@@ -11,6 +11,7 @@ import { bumpOpenAICursor, openAIRuntimeSignals, readOpenAICursor } from './open
 import { modelMatchesAllowlist } from './slot-model-gate.mjs'
 import { proxyBlockedReason } from '../vm/proxy-policy.mjs'
 import { effectiveOpenAIPolicy, evaluateOpenAIQuotaGate, normalizeOpenAIQuotaPolicy } from './openai-quota-policy.mjs'
+import { openaiCreditsEnabledOf } from '../czc/openai-credits-flags.mjs'
 
 // `stopped` is leftover Claude docker lifecycle. Codex kernel is independent.
 const HARD_UNAVAILABLE = new Set(['dead', 'error', 'disabled'])
@@ -26,14 +27,14 @@ export function isCodexSlotReady(vm) {
 }
 
 export function isCodexSlotParked(vm, now = Date.now(), policy = null) {
-  const until = Date.parse(vm?.codex_limited_until || '')
+  const until = Date.parse(vm?.codex_limited_until || vm?.codex?.extra?.codex_limited_until || '')
   if (Number.isFinite(until) && until > now) return true
   return extraPark(vm, now).limited || evaluateOpenAIQuotaGate(vm, policy || {}, now).limited
 }
 
 function extraPark(vm, now) {
   const extra = extraFromSummary(vm)
-  return codexQuotaPark(extra, now)
+  return codexQuotaPark(extra, now, { creditsEnabled: openaiCreditsEnabledOf(vm) })
 }
 
 function extraFromSummary(vm) {
@@ -51,7 +52,7 @@ function extraFromSummary(vm) {
     codex_7d_reset_at: w7.reset_at ?? limits.reset_7d_at ?? vm?.reset_7d,
     codex_5h_window_minutes: w5.window_minutes ?? limits.window_5h_minutes ?? 300,
     codex_7d_window_minutes: w7.window_minutes ?? limits.window_7d_minutes ?? 10080,
-    codex_limited_until: vm?.codex_limited_until || null,
+    codex_limited_until: vm?.codex_limited_until || vm?.codex?.extra?.codex_limited_until || null,
   }
 }
 
@@ -353,12 +354,14 @@ function hasQuotaRestriction(vm) {
  */
 export function evaluateCodexQuotaSchedule(vm, now = Date.now(), policy = null) {
   if (!vm || !isCodexVm(vm)) return { action: 'keep', reason: null }
-  const hardReason = codexQuotaWindowReason(vm, now)
+  const creditsEnabled = openaiCreditsEnabledOf(vm)
+  const hardReason = creditsEnabled ? null : codexQuotaWindowReason(vm, now)
   const local = evaluateOpenAIQuotaGate(vm, normalizeOpenAIQuotaPolicy(policy), now)
-  const reason = hardReason || (local.limited ? local.reason : null)
+  const parked = extraPark(vm, now)
+  const reason = hardReason || (local.limited ? local.reason : null) || (parked.limited ? 'quota_5h_header' : null)
   const leftover = isLeftoverQuotaScheduleOff(vm)
   if (reason) {
-    const until = hardReason ? codexRestrictionUntil(vm, now) : local.until
+    const until = hardReason ? codexRestrictionUntil(vm, now) : local.limited ? local.until : parked.until
     return { action: leftover ? 'restore' : 'restrict', reason, until }
   }
   if (policy == null && /_local$/.test(vm?.claude?.temp_unschedulable_reason || vm?.temp_unschedulable_reason || '')) {

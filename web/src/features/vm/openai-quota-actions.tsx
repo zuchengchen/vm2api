@@ -7,6 +7,7 @@ import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { OpenaiQuotaToggles } from '@/features/czc/openai-quota-toggles'
 import { dashboardQueryOptions } from '@/features/overview/queries'
 import { vmQueryOptions, vmsListQueryOptions } from '@/features/vm/queries'
 
@@ -14,6 +15,11 @@ type QuotaPayload = {
   reset_credits?: {
     available_count?: number
     credits?: Array<{ expires_at?: string }>
+  } | null
+  credits?: {
+    has_credits?: boolean | null
+    unlimited?: boolean
+    balance?: string | null
   } | null
   warning?: string
 }
@@ -42,11 +48,10 @@ function useOpenaiQuotaActions(vm: Vm) {
     onSuccess: async (data) => {
       await refreshAll()
       const count = Number(data?.reset_credits?.available_count)
-      toast.success(
-        Number.isFinite(count)
-          ? `已查询，可用重置券 ${count} 张`
-          : '已刷新 GPT 额度'
-      )
+      const coupon = Number.isFinite(count)
+        ? `可用重置券 ${count} 张`
+        : '已刷新 GPT 额度'
+      toast.success(coupon)
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -154,6 +159,12 @@ export function OpenaiQuotaActions({
         destructive
         isLoading={resetQuota.isPending}
         handleConfirm={() => resetQuota.mutate()}
+      />
+      <OpenaiQuotaToggles
+        vm={vm}
+        compact={compact}
+        busy={busy}
+        onQuery={() => queryQuota.mutate()}
       />
     </div>
   )

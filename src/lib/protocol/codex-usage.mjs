@@ -68,17 +68,19 @@ export const CODEX_DEFAULT_PARK_MS = 60_000
  * explicit `usage_limit_reached`, means the credential is spent until the
  * soonest window reset.
  */
-export function codexQuotaPark(extra = {}, now = Date.now()) {
+export function codexQuotaPark(extra = {}, now = Date.now(), { creditsEnabled = false } = {}) {
   const limits = normalizeCodexLimits(extraToCodexSnapshot(extra))
   let until = null
   let liveCap = false
-  for (const key of ['5h', '7d']) {
-    const used = num(limits[`used_${key}_percent`])
-    const resetMs = Date.parse(limits[`reset_${key}_at`] || '')
-    if (used == null || used < 100) continue
-    if (Number.isFinite(resetMs) && resetMs <= now) continue
-    liveCap = true
-    if (Number.isFinite(resetMs) && resetMs > now && (until == null || resetMs < until)) until = resetMs
+  if (!creditsEnabled) {
+    for (const key of ['5h', '7d']) {
+      const used = num(limits[`used_${key}_percent`])
+      const resetMs = Date.parse(limits[`reset_${key}_at`] || '')
+      if (used == null || used < 100) continue
+      if (Number.isFinite(resetMs) && resetMs <= now) continue
+      liveCap = true
+      if (Number.isFinite(resetMs) && resetMs > now && (until == null || resetMs < until)) until = resetMs
+    }
   }
   const manual = Date.parse(extra?.codex_limited_until || '')
   const manualLive = Number.isFinite(manual) && manual > now

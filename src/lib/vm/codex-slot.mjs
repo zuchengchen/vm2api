@@ -5,7 +5,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { atomicWriteJson, readJsonCached } from './vm-file.mjs'
 import { isCodexVm } from '../protocol/codex-route.mjs'
-import { buildCodexUsageView, extraToCodexSnapshot } from '../protocol/codex-usage.mjs'
+import { buildCodexUsageView, extraToCodexSnapshot, codexQuotaPark } from '../protocol/codex-usage.mjs'
+import { openaiCreditsEnabledOf, persistableOpenaiCredits } from '../czc/openai-credits-flags.mjs'
 
 export { isCodexVm }
 
@@ -255,8 +256,9 @@ export function upsertCodexAccount(projectRoot, vmId, patch = {}) {
   return cur
 }
 
-export function persistCodexQuotaSnapshot(projectRoot, vmId, { extra, resetCredits, planType } = {}) {
+export function persistCodexQuotaSnapshot(projectRoot, vmId, payload = {}) {
   if (!projectRoot || !vmId) throw new Error('projectRoot and vmId required')
+  const { extra, resetCredits, planType, now = Date.now() } = payload
   const file = path.join(projectRoot, 'vms', `${vmId}.json`)
   let vm
   try {
@@ -269,6 +271,11 @@ export function persistCodexQuotaSnapshot(projectRoot, vmId, { extra, resetCredi
   if (extra && typeof extra === 'object') {
     vm.codex.extra = { ...(vm.codex.extra || {}), ...extra }
     vm.codex.usage = buildCodexUsageView(extraToCodexSnapshot(vm.codex.extra))
+    const parked = codexQuotaPark({ ...vm.codex.extra, codex_limited_until: null }, now, {
+      creditsEnabled: openaiCreditsEnabledOf(vm),
+    })
+    if (parked.limited) vm.codex.extra.codex_limited_until = new Date(parked.until).toISOString()
+    else delete vm.codex.extra.codex_limited_until
   }
   const plan = String(planType || '').trim()
   if (plan) vm.codex.plan_type = plan
@@ -283,7 +290,10 @@ export function persistCodexQuotaSnapshot(projectRoot, vmId, { extra, resetCredi
       fetched_at: resetCredits.fetched_at || new Date().toISOString(),
     }
   }
-  vm.updated_at = new Date().toISOString()
+  if (Object.prototype.hasOwnProperty.call(payload, 'credits')) {
+    vm.codex.credits = persistableOpenaiCredits(payload.credits, new Date(now).toISOString())
+  }
+  vm.updated_at = new Date(now).toISOString()
   atomicWriteJson(file, vm, { mode: 0o600 })
   return vm
 }
@@ -307,6 +317,9 @@ export function summarizeCodexSlot(projectRoot, vm = {}) {
     account_count: accounts.length,
     usage,
     reset_credits: vm.codex?.reset_credits || null,
+    credits: vm.codex?.credits || null,
+    auto_reset_credit_enabled: vm.codex?.auto_reset_credit_enabled === true,
+    openai_credits_enabled: vm.codex?.openai_credits_enabled === true,
     plan_type: vm.codex?.plan_type || null,
   }
 }
