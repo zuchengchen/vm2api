@@ -6,6 +6,7 @@ import { api } from '@/lib/api'
 import { fmtUsd } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { OpenaiQuotaToggles } from '@/features/czc/openai-quota-toggles'
 import { dashboardQueryOptions } from '@/features/overview/queries'
 import { Meter, ResetAt } from '@/features/vm/detail-section-primitives'
 import { vmQueryOptions } from '@/features/vm/queries'
@@ -15,6 +16,11 @@ type QuotaPayload = {
     available_count?: number
     credits?: Array<{ expires_at?: string }>
     fetched_at?: string
+  } | null
+  credits?: {
+    has_credits?: boolean | null
+    unlimited?: boolean
+    balance?: string | null
   } | null
   warning?: string
 }
@@ -124,6 +130,11 @@ export function OpenaiQuotaPanel({
           {resetQuota.isPending ? '使用中…' : '使用重置券'}
         </Button>
       </div>
+      <OpenaiQuotaToggles
+        vm={vm}
+        busy={busy}
+        onQuery={() => queryQuota.mutate()}
+      />
       {expiry ? (
         <p className='m-0 text-[11px] text-muted-foreground'>
           最近一张到期 <ResetAt value={expiry} now={now} />

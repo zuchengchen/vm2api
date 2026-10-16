@@ -29,6 +29,8 @@ import {
 } from '../vm/slot-engine.mjs'
 import { probeAccount } from '../oauth/usage-probe.mjs'
 import { queryOpenaiQuota, resetOpenaiQuota } from '../oauth/openai-quota.mjs'
+import { applyOpenaiQuotaSettings } from '../czc/openai-credits.mjs'
+import { publicOpenaiQuotaFlags } from '../czc/openai-credits-flags.mjs'
 import { queryClaudeResetCredits, redeemClaudeResetCredit } from '../oauth/claude-reset-credits.mjs'
 import { canOfficialUsage, credentialModeOfVm, isSetupTokenMode } from '../oauth/credential-mode.mjs'
 import { getUsageCache } from '../oauth/usage-cache.mjs'
@@ -834,6 +836,34 @@ export async function buildOpenaiQuotaReset({ cfg, id, rotate = true, routingCon
     vm_id: id,
     source: 'openai-wham-reset',
     ...result,
+  })
+}
+
+export async function buildOpenaiQuotaSettings({ cfg, id, body = {}, routingConfig = {} } = {}) {
+  const policy = normalizeCodexRouting(routingConfig.codex).quota
+  const result = applyOpenaiQuotaSettings(cfg.paths.project, id, body, { policy })
+  if (!result.ok) return gptQuotaFail(result)
+  if (result.auto_reset_armed) {
+    const { maybeAutoResetOpenaiQuota } = await import('../czc/openai-auto-reset.mjs')
+    const auto = await maybeAutoResetOpenaiQuota({
+      projectRoot: cfg.paths.project,
+      vmId: id,
+      policy,
+    })
+    result.auto_reset = { action: auto.action, reason: auto.reason || null, windows_reset: auto.windows_reset || 0 }
+    const fresh = getVm(cfg.paths.project, id)
+    Object.assign(result, publicOpenaiQuotaFlags(fresh), {
+      reset_credits: fresh?.codex?.reset_credits || null,
+    })
+  }
+  return ok({
+    vm_id: id,
+    source: 'openai-quota-settings',
+    auto_reset_credit_enabled: result.auto_reset_credit_enabled,
+    openai_credits_enabled: result.openai_credits_enabled,
+    credits: result.credits,
+    reset_credits: result.reset_credits,
+    auto_reset: result.auto_reset || null,
   })
 }
 
@@ -1800,6 +1830,9 @@ function enrichVm(v, accountQuota, active, extras = {}) {
     status_7d_oi: isCodex ? null : q.status_7d_oi,
     codex_usage: v.codex_usage || null,
     reset_credits: isCodex ? v.reset_credits || v.codex?.reset_credits || null : null,
+    ...(isCodex
+      ? publicOpenaiQuotaFlags(v)
+      : { credits: null, auto_reset_credit_enabled: false, openai_credits_enabled: false }),
     claude_reset_credits: isCodex ? null : v.claude_reset_credits || null,
     plan_type: isCodex ? v.plan_type || null : null,
     ...(q.weekly_split ? { weekly_split: q.weekly_split } : {}),

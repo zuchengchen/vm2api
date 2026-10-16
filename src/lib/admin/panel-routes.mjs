@@ -2417,6 +2417,18 @@ export function createPanelHandler(ctx) {
         if (result.status) return json(res, result.status, result.body)
         return json(res, 200, result)
       }
+      if (req.method === 'POST' && /^\/api\/panel\/vms\/[^/]+\/openai-quota\/settings$/.test(p)) {
+        const id = p.split('/')[4]
+        const body = await readBody(req, 8192).catch(() => ({}))
+        const result = await panel.buildOpenaiQuotaSettings({
+          cfg,
+          id,
+          body,
+          routingConfig: ctx.routingConfig,
+        })
+        if (result.status) return json(res, result.status, result.body)
+        return json(res, 200, result)
+      }
       if (req.method === 'POST' && /^\/api\/panel\/vms\/[^/]+\/claude-reset\/query$/.test(p)) {
         const id = p.split('/')[4]
         const result = await panel.buildClaudeResetQuery({ cfg, id })

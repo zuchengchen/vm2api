@@ -61,6 +61,7 @@ test('user can query quota and redeem reset credits on owned vms and keys', () =
   const allowed = [
     '/api/panel/vms/vm-01/openai-quota/refresh',
     '/api/panel/vms/vm-01/openai-quota/reset',
+    '/api/panel/vms/vm-01/openai-quota/settings',
     '/api/panel/vms/vm-01/claude-reset/query',
     '/api/panel/vms/vm-01/claude-reset/redeem',
     '/api/panel/api-keys/key_a/reset-quota',

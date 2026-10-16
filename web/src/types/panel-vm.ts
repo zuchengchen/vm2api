@@ -239,6 +239,15 @@ export type Vm = {
     credits?: Array<{ expires_at?: string }>
     fetched_at?: string
   } | null
+  /** Codex /wham/usage 点数余额。has_credits 为 null 表示尚未查询。 */
+  credits?: {
+    has_credits?: boolean | null
+    unlimited?: boolean
+    balance?: string | null
+    fetched_at?: string
+  } | null
+  auto_reset_credit_enabled?: boolean
+  openai_credits_enabled?: boolean
   /** 限额重置按钮。setup-token 标签但 scope 含 user:profile 时也为 true。 */
   can_claude_reset?: boolean
   claude_reset_credits?: {
